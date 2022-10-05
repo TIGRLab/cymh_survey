@@ -1,0 +1,1519 @@
+---
+title: "Child & Youth Mental Health Division Learning Platform"
+date: "`r Sys.Date()`"
+description: |
+    Summarized results of the Spring 2022 survey.
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 2
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  comment = "##",
+  R.options = list(width = 60)
+)
+```
+
+```{r load_libraries}
+library(dplyr)
+library(forcats)
+library(glue)
+library(gt)
+library(gtExtras)
+library(gtsummary)
+library(here)
+library(readr)
+library(stringr)
+library(tidyr)
+```
+
+## Overview
+
+```{r}
+df <-
+  read_csv(here("data", "ChildYouthMentalHeal_DATA_2022-07-04_0939.csv"), na = c("", "NA", "N/A", "none", "?")) %>%
+  select(-redcap_survey_identifier) %>%
+  filter(!is.na(survey_01)) %>%
+  filter(!record_id %in% c(4, 17, 20)) %>%
+  mutate(site = recode(survey_01,
+                       "1" = "Centre for Addiction and Mental Health",
+                       "3" = "Garry Hurvitz Centre for Community Mental Health",
+                       "4" = "George Hull Centre for Children and Families",
+                       "5" = "Humber River Hospital",
+                       "6" = "Michael Garron Hospital",
+                       "7" = "North York General Hospital",
+                       "8" = "Ontario Shores",
+                       "9" = "Scarborough Health Network",
+                       "10" = "Hospital for Sick Children",
+                       "11" = "Sunnybrook Health Sciences Centre",
+                       "12" = "Trillium Health Partners",
+                       "13" = "Unity Health",
+                       "14" = "University of Toronto Health & Wellness",
+                       "15" = "Women's College Hospital",
+                       "16" = "Youthdale Treatment Centres"))
+```
+
+```{r}
+full_site_list <- c("Centre for Addiction and Mental Health",
+                    "Garry Hurvitz Centre for Community Mental Health",
+                    "George Hull Centre for Children and Families",
+                    "Humber River Hospital",
+                    "Michael Garron Hospital",
+                    "North York General Hospital",
+                    "Ontario Shores",
+                    "Scarborough Health Network",
+                    "Hospital for Sick Children",
+                    "Sunnybrook Health Sciences Centre",
+                    "Trillium Health Partners",
+                    "Unity Health",
+                    "University of Toronto Health & Wellness",
+                    "Women's College Hospital",
+                    "Youthdale Treatment Centres"
+)
+
+missing_sites <- setdiff(full_site_list, df$site)
+```
+
+```{r}
+df <-
+  df %>%
+  add_row(site = missing_sites, spring_2022_survey_complete = rep(999, length(missing_sites))) %>%
+  select(site, everything()) %>%
+  arrange(site) %>%
+  mutate(site_abbr = case_when(site == "Centre for Addiction and Mental Health" ~ "CAMH",
+                               site == "Garry Hurvitz Centre for Community Mental Health" ~ "CCMH",
+                               site == "George Hull Centre for Children and Families" ~ "GHC",
+                               site == "Humber River Hospital" ~ "HRH",
+                               site == "Michael Garron Hospital" ~ "MGH",
+                               site == "North York General Hospital" ~ "NYGH",
+                               site == "Ontario Shores" ~ "Ontario Shores",
+                               site == "Scarborough Health Network" ~ "SHN",
+                               site == "Hospital for Sick Children" ~ "SickKids",
+                               site == "Sunnybrook Health Sciences Centre" ~ "Sunnybrook",
+                               site == "Trillium Health Partners" ~ "THP",
+                               site == "Unity Health" ~ "Unity Health",
+                               site == "University of Toronto Health & Wellness" ~ "UTHW",
+                               site == "Women's College Hospital" ~ "WCH",
+                               site == "Youthdale Treatment Centres" ~ "Youthdale")
+  )
+```
+
+```{r}
+sites_completed <-
+  df %>%
+  mutate(survey_status = recode(spring_2022_survey_complete,
+                                "0" = "Responded",
+                                "2" = "Responded",
+                                "999" = "Did not respond")) %>%
+  select(site, site_abbr, survey_status) %>%
+  arrange(
+    factor(survey_status, levels = c("Responded", "Did not respond"))
+  ) %>%
+  unique() %>%
+  group_by(survey_status) %>%
+  gt(rowname_col = "site") %>%
+  cols_label(site_abbr = "") %>%
+  tab_style(
+    style = list(
+      cell_text(weight = "bold")
+    ),
+    locations = cells_row_groups()
+  ) %>%
+  gt_theme_538()
+```
+
+```{r}
+df <-
+  df %>%
+  filter(!is.na(record_id))
+```
+
+We received responses from **`r df %>% nrow()`** managers to the survey. Of the responses, **`r df %>% filter(spring_2022_survey_complete == 2) %>% nrow()`** were fully complete and **`r df %>% filter(spring_2022_survey_complete == 0) %>% nrow()`** were partially complete.
+
+The table below summarizes which sites we received responses from:
+
+```{r}
+sites_completed
+```
+
+```{r}
+multi_response <-
+  df %>%
+  group_by(site_abbr) %>%
+  count() %>%
+  filter(n > 1)
+```
+
+<br>
+
+We received responses from *2* different managers at sites: **`r paste(multi_response$site_abbr, sep=",", collapse=" and ")`**. Where possible, we've only included the unique responses for each site.
+
+## Results
+
+### 3. How do new outpatient clients get into your site/centre?
+
+```{r}
+q3 <-
+  df %>%
+  select(site_abbr, survey_03___1:survey_03_other) %>%
+  filter_all(any_vars(. != 0))
+
+q3_uniq_sites <-
+  q3 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q3_results <-
+  q3 %>%
+  select(-survey_03_other) %>%
+  pivot_longer(survey_03___1:survey_03___4, names_to = "referral_source", values_to = "count") %>%
+  filter(count == 1) %>%
+  unique() %>%
+  mutate(referral_source = recode(referral_source,
+                                  "survey_03___1" = "Self-referral",
+                                  "survey_03___2" = "MD only referral",
+                                  "survey_03___3" = "Hospital emergency department or internal referral",
+                                  "survey_03___4" = "Other"))
+
+self_ref_sites <-
+  q3_results %>%
+  filter(referral_source == "Self-referral") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+md_ref_sites <-
+  q3_results %>%
+  filter(referral_source == "MD only referral") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+hosp_ref_sites <-
+  q3_results %>%
+  filter(referral_source == "Hospital emergency department or internal referral") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_ref_sites <-
+  q3_results %>%
+  filter(referral_source == "Other") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q3_results %>%
+  group_by(referral_source) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q3_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(referral_source == "Self-referral" ~ self_ref_sites,
+                          referral_source == "Hospital emergency department or internal referral" ~ hosp_ref_sites,
+                          referral_source == "Other" ~ other_ref_sites,
+                          referral_source == "MD only referral" ~ md_ref_sites)) %>%
+  arrange(desc(count)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    referral_source = "Referral source",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+<br>
+
+Sites that endorsed other referral sources are summarized below:
+
+```{r}
+df %>%
+  select(site_abbr, survey_03_other) %>%
+  filter(!is.na(survey_03_other)) %>%
+  arrange(site_abbr) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_03_other = "Other referral source"
+  ) %>%
+  gt_theme_538()
+```
+
+### 4. Are there exclusion criteria that indicate which outpatient clients you will not see?
+
+```{r}
+q4 <-
+  df %>%
+  select(site_abbr, survey_04___1:survey_04_other) %>%
+  filter_all(any_vars(. != 0))
+
+q4_uniq_sites <-
+  q4 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q4_results <-
+  q4 %>%
+  select(-c(survey_04_exclude_young, survey_04_exclude_old, survey_04_other)) %>%
+  pivot_longer(survey_04___1:survey_04___4, names_to = "exclusion_criteria", values_to = "count") %>%
+  filter(count == 1) %>%
+  unique() %>%
+  mutate(exclusion_criteria = recode(exclusion_criteria,
+    "survey_04___1" = "Catchment area",
+    "survey_04___2" = "Exclusion of young children",
+    "survey_04___3" = "Exclusion of older youth/emerging adults",
+    "survey_04___4" = "Other exclusion") %>%
+      as_factor() %>%
+      fct_relevel(c("Catchment area", "Exclusion of young children", "Exclusion of older youth/emerging adults", "Other exclusion")))
+
+catchment_sites <-
+  q4_results %>%
+  filter(exclusion_criteria == "Catchment area") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+young_age_sites <-
+  q4_results %>%
+  filter(exclusion_criteria == "Exclusion of young children") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+old_age_sites <-
+  q4_results %>%
+  filter(exclusion_criteria == "Exclusion of older youth/emerging adults") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_exclude_sites <-
+  q4_results %>%
+  filter(exclusion_criteria == "Other exclusion") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+```
+
+```{r}
+q4_results %>%
+  group_by(exclusion_criteria) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q4_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(exclusion_criteria == "Catchment area" ~ catchment_sites,
+                          exclusion_criteria == "Exclusion of young children" ~ young_age_sites,
+                          exclusion_criteria == "Exclusion of older youth/emerging adults" ~ old_age_sites,
+                          exclusion_criteria == "Other exclusion" ~ other_exclude_sites)) %>%  
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    exclusion_criteria = "Exclusion criteria",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_align(align = c("left"),
+             columns = exclusion_criteria) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+<br>
+
+```{r}
+exclude_age <-
+  df %>%
+  select(site_abbr, survey_04_exclude_young, survey_04_exclude_old) %>%
+  mutate(exclude_age = case_when(!is.na(survey_04_exclude_young) & !is.na(survey_04_exclude_old) ~ glue("> {survey_04_exclude_young} and < {survey_04_exclude_old}"),
+                                 !is.na(survey_04_exclude_young) ~ glue("> {survey_04_exclude_young}"),
+                                 !is.na(survey_04_exclude_old) ~ glue("< {survey_04_exclude_old}"))) %>%
+  select(site_abbr, exclude_age) %>%
+  filter(!is.na(exclude_age))
+
+exclude_age %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    exclude_age = md("Age ranges **included**")
+  ) %>%
+  gt_theme_538()
+```
+
+<br>
+
+```{r}
+exclude_other <-
+  df %>%
+  select(site_abbr, survey_04_other) %>%
+  filter(!is.na(survey_04_other))
+
+exclude_other %>%
+  gt()  %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_04_other = "Other exclusion criteria"
+  ) %>%
+  gt_theme_538()
+```
+
+### 5. Is first outpatient clinical assessment assigned on a first come, first served basis?
+
+```{r}
+q5 <-
+  df %>%
+  select(site_abbr, survey_05, survey_05_other) %>%
+  filter(!is.na(survey_05))
+
+q5_uniq_sites <- q5 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q5_results <-
+  q5 %>%
+  unique() %>%
+  mutate(survey_05 = recode(survey_05,
+                            "1" = "Yes",
+                            "0" = "No",
+                            "2" = "Other") %>%
+           as_factor() %>%
+           fct_relevel(c("Yes", "No", "Other")))
+
+outpatient_yes_sites <-
+  q5_results %>%
+  filter(survey_05 == "Yes") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+outpatient_no_sites <-
+  q5_results %>%
+  filter(survey_05 == "No") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+outpatient_other_sites <-
+  q5_results %>%
+  filter(survey_05 == "Other") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q5_results %>%
+  group_by(survey_05) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q5_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_05 == "Yes" ~ outpatient_yes_sites,
+                          survey_05 == "No" ~ outpatient_no_sites,
+                          survey_05 == "Other" ~ outpatient_other_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_05 = "Response",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  )  %>%
+  cols_align(align = c("left"),
+             columns = survey_05) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+<br>
+
+```{r}
+q5 %>%
+  filter(!is.na(survey_05_other)) %>%
+  select(-survey_05) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_05_other = "Other response"
+  ) %>%
+  gt_theme_538()
+```
+
+### 6. Across your child & youth outpatient mental health service, what is the current average wait time from first referral to initial outpatient clinical assessment?
+
+```{r}
+q6 <-
+  df %>%
+  select(site_abbr, survey_06, survey_06_other) %>%
+  filter(!is.na(survey_06))
+
+q6_uniq_sites <-
+  q6 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q6_results <-
+  q6 %>%
+  unique() %>%
+  mutate(survey_06 = recode(survey_06,
+                            "1" = "< 1 month",
+                            "2" = "1-2 months",
+                            "3" = "3-6 months",
+                            "4" = "7-9 months",
+                            "5" = "10-12 months",
+                            "6" = "12+ months") %>%
+           as_factor() %>%
+           fct_relevel(c("C< 1 month", "1-2 months", "3-6 months", "7-9 months", "10-12 months", "12+ months")))
+
+wait_1_sites <-
+  q6_results %>%
+  filter(survey_06 == "< 1 month") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+wait_2_sites <-
+  q6_results %>%
+  filter(survey_06 == "1-2 months") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+wait_3_sites <-
+  q6_results %>%
+  filter(survey_06 == "3-6 months") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+wait_4_sites <-
+  q6_results %>%
+  filter(survey_06 == "7-9 months") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+wait_5_sites <-
+  q6_results %>%
+  filter(survey_06 == "10-12 months") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+wait_6_sites <-
+  q6_results %>%
+  filter(survey_06 == "12+ months") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q6_results %>%
+  group_by(survey_06) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q6_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_06 == "< 1 month" ~ wait_1_sites,
+                          survey_06 == "1-2 months" ~ wait_2_sites,
+                          survey_06 == "3-6 months" ~ wait_3_sites,
+                          survey_06 == "7-9 months" ~ wait_4_sites,
+                          survey_06 == "10-12 months" ~ wait_5_sites,
+                          survey_06 == "12+ months" ~ wait_6_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_06 = "Average wait time",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>%
+  cols_align(align = c("left"),
+             columns = survey_06) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 7. Initial outpatient clinical assessments completed by:
+
+```{r}
+q7 <-
+  df %>%
+  select(site_abbr, survey_07) %>%
+  filter(!is.na(survey_07))
+
+q7_uniq_sites <-
+  q7 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q7_results <-
+  q7 %>%
+  unique() %>%
+  mutate(survey_07 = recode(survey_07,
+                            "1" = "MD only",
+                            "2" = "Psychologist only",
+                            "3" = "Other allied health staff only",
+                            "4" = "MD, psychologist or other allied health clinician",
+                            "5" = "Always multidisciplinary") %>%
+           as_factor())
+
+md_sites <-
+  q7_results %>%
+  filter(survey_07 == "MD only") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+psych_sites <-
+  q7_results %>%
+  filter(survey_07 == "Psychologist only") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_allied_sites <-
+  q7_results %>%
+  filter(survey_07 == "Other allied health staff only") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+either_md_allied_sites <-
+  q7_results %>%
+  filter(survey_07 == "MD, psychologist or other allied health clinician") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+multi_sites <-
+  q7_results %>%
+  filter(survey_07 == "Always multidisciplinary") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q7_results %>%
+  group_by(survey_07) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q7_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_07 == "MD only" ~ md_sites,
+                          survey_07 == "MD, psychologist or other allied health clinician" ~ either_md_allied_sites,
+                          survey_07 == "Always multidisciplinary" ~ multi_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_07 = "Completed by",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>%
+  cols_align(align = c("left"),
+             columns = survey_07) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 8. How many FTE MDs are there at your site/centre providing outpatient mental health assessment/care for children and youth?
+
+```{r}
+df %>%
+  select(site_abbr, survey_08) %>%
+  arrange(site_abbr) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_08 = "MD"
+  ) %>%
+  gt_theme_538()
+```
+
+### 9. How many FTE allied health are there?
+
+NOTE: No FTE allied health from Unity Health and Women's College.
+
+```{r}
+q9 <-
+  df %>%
+  select(site_abbr, survey_09_psych:survey_09_other3) %>%
+  select(!contains("_equal")) %>%
+  mutate_all(~na_if(., 0)) %>%
+  mutate(survey_09_other1_title = case_when(
+    survey_09_other1_title %in% c("occupational therapist", "Occupational Therapists") ~ "Occupational therapist",
+    survey_09_other1_title == "intake specialist" ~ "Intake specialist",
+    survey_09_other1_title == "ECE" ~ "ECE",
+    survey_09_other1_title == "Mental health nurse" ~ "Mental health nurse",
+    survey_09_other1_title == "psychometrist" ~"Psychometrist"
+  )) %>%
+  unite("other", survey_09_other1_title:survey_09_other1, sep = " - ", na.rm = TRUE, remove = TRUE) %>%
+  unique()
+
+q9 <- q9[, colSums(sapply(q9, is.na)) != nrow(q9)]
+
+no_allied_sites <- q9[rowSums(is.na(q9)) == ncol(q9) - 1, ]$site_abbr
+
+q9 <- q9[rowSums(is.na(q9)) != ncol(q9) - 1, ]
+```
+
+```{r}
+q9 %>%
+  arrange(site_abbr) %>%
+  gt() %>%
+  fmt_missing(columns = everything(), missing_text = "—") %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_09_psych = "Psychologist",
+    survey_09_psych_assoc = "Psych associate",
+    survey_09_soc = "Social worker",
+    survey_09_rn = "Registered nurse",
+    survey_09_np = "Nurse practitioner",
+    survey_09_cyw = "CYW",
+    survey_09_bcba = "BCBA",
+    other = "Other"
+  ) %>%
+  gt_theme_538()
+```
+
+### 10. Does your site/centre track what proportion of outpatient clients are offered ongoing outpatient care/treatment services following an initial child & youth mental health assessment?
+
+```{r}
+q10 <-
+  df %>%
+  select(site_abbr, survey_10:survey_10_other) %>%
+  filter_all(any_vars(. != 0))
+
+q10_uniq_sites <-
+  q10 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q10_results <-
+  q10 %>%
+  select(-c(survey_10_percent, survey_10_other)) %>%
+  unique() %>%
+  mutate(survey_10 = recode(survey_10,
+                            "1" = "Tracked",
+                            "2" = "Tracked for some but not all services",
+                            "3" = "Not tracked",
+                            "4" = "Don't know") %>%
+           as_factor())
+
+tracked_sites <-
+  q10_results %>%
+  filter(survey_10 == "Tracked") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+some_tracked_sites <-
+  q10_results %>%
+  filter(survey_10 == "Tracked for some but not all services") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+untracked_sites <-
+  q10_results %>%
+  filter(survey_10 == "Not tracked") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+tracking_unk_sites <-
+  q10_results %>%
+  filter(survey_10 == "Don't know") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q10_results %>%
+  group_by(survey_10) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q10_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_10 == "Tracked" ~ tracked_sites,
+                          survey_10 == "Tracked for some but not all services" ~ some_tracked_sites,
+                          survey_10 == "Not tracked" ~ untracked_sites,
+                          survey_10 == "Don't know" ~ tracking_unk_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_10 = "Response",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  cols_align(align = c("left"),
+             columns = survey_10) %>%
+  gt_theme_538()  
+```
+
+<br>
+
+```{r}
+df %>%
+  select(site_abbr, survey_10, survey_10_percent, survey_10_other) %>%
+  filter(survey_10 %in% c(1, 2)) %>%
+  mutate(survey_10_recode = recode(survey_10,
+                            "1" = "Tracked",
+                            "2" = "Tracked for some but not all services",
+                            "3" = "Not tracked",
+                            "4" = "Don't know"),
+         scale_bar = survey_10_percent) %>%
+  select(site_abbr, survey_10_recode, survey_10_percent, scale_bar, survey_10_other) %>%
+  unique() %>%
+  arrange(site_abbr) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = scale_bar, scaled = TRUE) %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_10_recode = "Tracking status",
+    survey_10_percent = "%",
+    scale_bar = "",
+    survey_10_other = "Other"
+  ) %>%
+  cols_width(4 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 11. Does your site/centre use specific criteria to determine which outpatient clients are provided with any ongoing mental health care after an initial assessment is completed?
+
+
+```{r}
+q11 <-
+  df %>%
+  select(site_abbr, survey_11:survey_11_some) %>%
+  filter_all(any_vars(. != 0))
+
+q11_uniq_sites <-
+  q11 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q11_results <-
+  q11 %>%
+  unique() %>%
+  mutate(survey_11_recode = recode(survey_11,
+                                   "1" = "All programs/services have specific criteria",
+                                   "2" = "Some programs/services have specific criteria",
+                                   "3" = "None") %>%
+           as_factor() %>%
+           fct_relevel(c("All programs/services have specific criteria", "Some programs/services have specific criteria", "None")),
+         survey_11_explain = case_when(!is.na(survey_11_all) ~ survey_11_all,
+                                       !is.na(survey_11_some) ~ survey_11_some))
+
+crit_all_sites <-
+  q11_results %>%
+  filter(survey_11 == 1) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+crit_some_sites <-
+  q11_results %>%
+  filter(survey_11 == 2) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+crit_none_sites <-
+  q11_results %>%
+  filter(survey_11 == 3) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+```
+
+```{r}
+q11_results %>%
+  group_by(survey_11_recode) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q11_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_11_recode == "All programs/services have specific criteria" ~ crit_all_sites,
+                          survey_11_recode == "Some programs/services have specific criteria" ~ crit_some_sites,
+                          survey_11_recode == "None" ~ crit_none_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_11_recode = "Response",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  cols_align(align = c("left"),
+             columns = survey_11_recode) %>%
+  gt_theme_538()    
+```
+
+<br>
+
+```{r}
+q11_results %>%
+  filter(survey_11 %in% c(1, 2)) %>%
+  select(site_abbr, survey_11_recode, survey_11_explain) %>%
+  arrange(survey_11_recode) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_11_recode = "Criteria",
+    survey_11_explain = "Please specify"
+  ) %>%
+  cols_align(align = c("left")) %>%
+  gt_theme_538()
+```
+
+### 12. Which of the following outpatient mental health treatment services are offered at your centre?
+
+```{r}
+q12 <-
+  df %>%
+  select(site_abbr, survey_12_group___1:survey_12_day_tx_wait) %>%
+  filter_all(any_vars(. != 0))
+
+q12_uniq_sites <-
+  q12 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q12_results <-
+  q12 %>%
+  select(site_abbr, survey_12_group___1:survey_12_group___5, survey_12_individual___1:survey_12_individual___5, survey_12_cont___1:survey_12_cont___9) %>%   
+  pivot_longer(survey_12_group___1:survey_12_cont___9, names_to = "psychotherapy", values_to = "count") %>%
+  filter(count == 1) %>%
+  unique() %>%
+  mutate(setting = case_when(str_detect(psychotherapy, "group") ~ "Group",
+                             str_detect(psychotherapy, "individual") ~ "Individual",
+                             str_detect(psychotherapy, "cont") ~ "Other"),
+         psychotherapy_recode = case_when(str_detect(psychotherapy, "[individual|group]___1") ~ "CBT",
+                                          str_detect(psychotherapy, "[individual|group]___2") ~ "DBT",
+                                          str_detect(psychotherapy, "[individual|group]___3") ~ "IPT",
+                                          str_detect(psychotherapy, "[individual|group]___4") ~ "Other",
+                                          str_detect(psychotherapy, "[individual|group]___5") ~ "None",
+                                          str_detect(psychotherapy, "cont___1") ~ "Family therapy",
+                                          str_detect(psychotherapy, "cont___2") ~ "Unstructured supportive group therapy",
+                                          str_detect(psychotherapy, "cont___3") ~ "Unstructured supportive individual therapy",
+                                          str_detect(psychotherapy, "cont___4") ~ "Medication support by MD/nurse practitioner",
+                                          str_detect(psychotherapy, "cont___5") ~ "System/Transition navigators",
+                                          str_detect(psychotherapy, "cont___6") ~ "Urgent care clinic",
+                                          str_detect(psychotherapy, "cont___7") ~ "Urgent assessment",
+                                          str_detect(psychotherapy, "cont___8") ~ "Day treatment",
+                                          str_detect(psychotherapy, "cont___9") ~ "Other") %>%
+           as_factor() %>%
+           fct_relevel(c("CBT", "DBT", "IPT", "Family therapy", "Unstructured supportive group therapy", "Unstructured supportive individual therapy", "Medication support by MD/nurse practitioner", "System/Transition navigators", "Urgent care clinic", "Urgent assessment", "Day treatment", "Other", "None")))
+
+cbt_g_sites <-
+  q12_results %>%
+  filter(setting == "Group" & psychotherapy_recode == "CBT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+dbt_g_sites <-
+  q12_results %>%
+  filter(setting == "Group" & psychotherapy_recode == "DBT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+ipt_g_sites <-
+  q12_results %>%
+  filter(setting == "Group" & psychotherapy_recode == "IPT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_g_sites <-
+  q12_results %>%
+  filter(setting == "Group" & psychotherapy_recode == "Other") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+none_g_sites <-
+  q12_results %>%
+  filter(setting == "Group" & psychotherapy_recode == "None") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+cbt_i_sites <-
+  q12_results %>%
+  filter(setting == "Individual" & psychotherapy_recode == "CBT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+dbt_i_sites <-
+  q12_results %>%
+  filter(setting == "Individual" & psychotherapy_recode == "DBT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+ipt_i_sites <-
+  q12_results %>%
+  filter(setting == "Individual" & psychotherapy_recode == "IPT") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_i_sites <-
+  q12_results %>%
+  filter(setting == "Individual" & psychotherapy_recode == "Other") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+none_i_sites <-
+  q12_results %>%
+  filter(setting == "Individual" & psychotherapy_recode == "None") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+ft_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Family therapy") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+usgt_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Unstructured supportive group therapy") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+usit_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Unstructured supportive individual therapy") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+md_support_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Medication support by MD/nurse practitioner") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+sys_nav_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "System/Transition navigators") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+ucc_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Urgent care clinic") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+ua_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Family therapy") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+dt_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Day treatment") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+other_other_sites <-
+  q12_results %>%
+  filter(setting == "Other" & psychotherapy_recode == "Other") %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+```
+
+```{r}
+q12_results %>%
+  group_by(setting, psychotherapy_recode) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q12_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(setting == "Group" & psychotherapy_recode == "CBT" ~ cbt_g_sites,
+                          setting == "Group" & psychotherapy_recode == "DBT" ~ dbt_g_sites,
+                          setting == "Group" & psychotherapy_recode == "IPT" ~ ipt_g_sites,
+                          setting == "Group" & psychotherapy_recode == "Other" ~ other_g_sites,
+                          setting == "Group" & psychotherapy_recode == "None" ~ none_g_sites,
+                          setting == "Individual" & psychotherapy_recode == "CBT" ~ cbt_i_sites,
+                          setting == "Individual" & psychotherapy_recode == "DBT" ~ dbt_i_sites,
+                          setting == "Individual" & psychotherapy_recode == "IPT" ~ ipt_i_sites,
+                          setting == "Individual" & psychotherapy_recode == "Other" ~ other_i_sites,
+                          setting == "Individual" & psychotherapy_recode == "None" ~ none_i_sites,
+                          setting == "Other" & psychotherapy_recode == "Family therapy" ~ ft_sites,
+                          setting == "Other" & psychotherapy_recode == "Unstructured supportive group therapy" ~ usgt_sites,
+                          setting == "Other" & psychotherapy_recode == "Unstructured supportive individual therapy" ~ usit_sites,
+                          setting == "Other" & psychotherapy_recode == "Medication support by MD/nurse practitioner" ~ md_support_sites,
+                          setting == "Other" & psychotherapy_recode == "System/Transition navigators" ~ sys_nav_sites,
+                          setting == "Other" & psychotherapy_recode == "Urgent care clinic" ~ ucc_sites,
+                          setting == "Other" & psychotherapy_recode == "Urgent assessment" ~ ua_sites,
+                          setting == "Other" & psychotherapy_recode == "Day treatment" ~ dt_sites,
+                          setting == "Other" & psychotherapy_recode == "Other" ~ other_other_sites
+  )) %>%
+  group_by(setting) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    setting = "Setting",
+    psychotherapy_recode = "Treatment",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>%
+  cols_align(align = c("left"),
+             columns = psychotherapy_recode) %>%
+  cols_width(4 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+<br>
+
+```{r}
+q12 %>%
+  select(site_abbr, survey_12_group_other, survey_12_individual_other, survey_12_cont_other) %>%
+  pivot_longer(survey_12_group_other:survey_12_cont_other, names_to = "setting", values_to = "other") %>%
+  filter(!is.na(other)) %>%
+  mutate(setting = case_when(str_detect(setting, "group") ~ "Group",
+                             str_detect(setting, "individual") ~ "Individual",
+                             str_detect(setting, "cont") ~ "Other") %>%
+           as_factor() %>%
+           fct_relevel(c("Group", "Individual", "Other"))) %>%
+  arrange(setting) %>%
+  group_by(setting) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    other = "Other treatment service"
+  ) %>%
+  gt_theme_538()
+```
+
+<br>
+
+```{r}
+q12 %>%
+  select(site_abbr, contains("wait")) %>%
+  pivot_longer(survey_12_cbt_group_wait:survey_12_day_tx_wait, names_to = "treatment", values_to = "wait") %>%
+  filter(!is.na(wait)) %>%
+  group_by(treatment) %>%
+  arrange(treatment)
+```
+
+### 12b. Is the group/individual (CBT, DBT, IPT) psychotherapy approach used standardized across your service?
+
+```{r}
+q12_psych <-
+  q12 %>%
+  select(site_abbr, survey_12_part) %>%
+  filter(!is.na(survey_12_part)) %>%
+  unique() %>%
+  mutate(survey_12_part_recode = recode(survey_12_part,
+                                        "1" = "Yes",
+                                        "0" = "No",
+                                        "2" = "Don't know") %>%
+           as_factor() %>%
+           fct_relevel(c("Yes", "No", "Don't know")))
+
+standard_yes_sites <-
+  q12_psych %>%
+  filter(survey_12_part == 1) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+standard_no_sites <-
+  q12_psych %>%
+  filter(survey_12_part == 0) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+standard_unk_sites <-
+  q12_psych %>%
+  filter(survey_12_part == 2) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+q12_psych %>%
+  group_by(survey_12_part_recode) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q12_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_12_part_recode == "Yes" ~ standard_yes_sites,
+                          survey_12_part_recode == "No" ~ standard_no_sites,
+                          survey_12_part_recode == "Don't know" ~ standard_unk_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_12_part_recode = "Response",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>% 
+  cols_width(3 ~ px(125)) %>%
+  cols_align(align = c("left"),
+             columns = survey_12_part_recode) %>%
+  gt_theme_538()
+```
+
+### 12c. Please specify DBT model used:
+
+```{r}
+q12 %>%
+  select(site_abbr, survey_12_dbt) %>%
+  filter(!is.na(survey_12_dbt)) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_12_dbt = "DBT Model"
+  ) %>%
+  gt_theme_538()
+```
+
+### 13. Does your site have pre-defined criteria to indicate when outpatient clients that are currently receiving outpatient psychiatric/mental health care in your service are discharged/transitioned out of your service and over to their GP, primary care, community, or other services for ongoing mental health care?
+
+```{r}
+q13 <-
+  df %>%
+  select(site_abbr, survey_13, survey_13_specify)
+
+q13_uniq_sites <-
+  q13 %>%
+  select(site_abbr) %>%
+  unique() %>%
+  nrow()
+```
+
+```{r}
+q13_results <-
+  q13 %>%
+  unique() %>%
+  mutate(survey_13_recode = recode(survey_13,
+                                   "1" = "Yes",
+                                   "0" = "No",
+                                   "2" = "Don't know") %>%
+           as_factor() %>%
+           fct_relevel(c("Yes", "No", "Don't know")))
+
+discharge_yes_sites <-
+  q13_results %>%
+  filter(survey_13 == 1) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+discharge_no_sites <-
+  q13_results %>%
+  filter(survey_13 == 0) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+
+discharge_unk_sites <-
+  q13_results %>%
+  filter(survey_13 == 2) %>%
+  select(site_abbr) %>%
+  unlist %>%
+  paste(., collapse=", ")
+```
+
+```{r}
+q13_results %>%
+  group_by(survey_13_recode) %>%
+  summarize(count = n()) %>%
+  mutate(count_scaled = count/q13_uniq_sites * 100) %>%
+  ungroup() %>%
+  mutate(site = case_when(survey_13_recode == "Yes" ~ discharge_yes_sites,
+                          survey_13_recode == "No" ~ discharge_no_sites,
+                          survey_13_recode == "Don't know" ~ discharge_unk_sites)) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_13_recode = "Response",
+    count = "# of responses",
+    count_scaled = "",
+    site = "Sites"
+  ) %>% 
+  cols_width(3 ~ px(125)) %>%
+  cols_align(align = c("left"),
+             columns = survey_13_recode) %>%
+  gt_theme_538()
+```
+
+<br>
+
+Sites which specified their pre-defined criteria are summarized below:
+```{r}
+q13 %>%
+  select(site_abbr, survey_13_specify) %>%
+  filter(!is.na(survey_13_specify)) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_13_specify = "Specify"
+  ) %>%
+  gt_theme_538()
+```
+
+## Logistics
+
+```{r}
+survey_logistics <-
+  df %>%
+  select(site_abbr, survey_14:survey_21)
+
+survey_logistics <-
+  survey_logistics[rowSums(is.na(survey_logistics)) != ncol(survey_logistics) - 1, ]
+```
+
+For the survey logistics section, we received responses from **`r survey_logistics %>% nrow()`** of the **`r df %>% nrow()`** site managers.
+
+<br>
+
+### 14. Survey questions were clearly worded and easy to respond to:
+
+```{r}
+q14 <-
+  survey_logistics %>%
+  select(site_abbr, survey_14) %>%
+  filter(!is.na(survey_14)) %>%
+  mutate(survey_14_recode = recode(survey_14,
+                                   "1" = "Yes",
+                                   "2" = "No"))
+
+q14_responses <- nrow(q14)
+
+q14 %>%
+  group_by(survey_14_recode) %>%
+  summarize(count = n()) %>%
+  arrange(count) %>%
+  mutate(count_scaled = count/q14_responses * 100) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_14_recode = "Response",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 15. This survey took me:
+
+```{r}
+q15 <-
+  survey_logistics %>%
+  select(site_abbr, survey_15) %>%
+  filter(!is.na(survey_15)) %>%
+  mutate(survey_15_recode = recode(survey_15,
+                                   "1" = "5-10 min",
+                                   "2" = "10-15 min",
+                                   "3" = "15-20 min",
+                                   "4" = ">20 min"))
+
+q15_responses <- nrow(q15)
+
+q15 %>%
+  group_by(survey_15_recode) %>%
+  summarize(count = n()) %>%
+  arrange(count) %>%
+  mutate(count_scaled = count/q15_responses * 100) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_15_recode = "Response",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 16. The length of this survey was:
+
+```{r}
+q16 <-
+  survey_logistics %>%
+  select(site_abbr, survey_16) %>%
+  filter(!is.na(survey_16)) %>%
+  mutate(survey_16_recode = recode(survey_16,
+                                   "1" = "Too long",
+                                   "2" = "Perfect",
+                                   "3" = "Would have been OK and manageable if the survey were a little longer"))
+
+q16_responses <- nrow(q16)
+
+q16 %>%
+  group_by(survey_16_recode) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  mutate(count_scaled = count/q16_responses * 100) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_16_recode = "Response",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 17. Do you think the information collected in this survey would be useful to enhance knowledge and connectivity across our Division?
+  
+```{r}
+q17 <-
+  survey_logistics %>%
+  select(site_abbr, survey_17) %>%
+  filter(!is.na(survey_17)) %>%
+  mutate(survey_17_recode = recode(survey_17,
+                                   "1" = "Yes",
+                                   "0" = "No",
+                                   "2" = "Don't know") %>%
+           as_factor() %>%
+           fct_relevel(c("Yes", "No", "Don't know")))
+
+q17_responses <- nrow(q17)
+
+q17 %>%
+  group_by(survey_17_recode) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  mutate(count_scaled = count/q17_responses * 100) %>%
+  gt() %>%
+  gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
+  cols_label(
+    survey_17_recode = "Response",
+    count = "# of responses",
+    count_scaled = ""
+  ) %>%
+  cols_width(3 ~ px(125)) %>%
+  gt_theme_538()
+```
+
+### 18. Would you be willing to be contacted to contribute to a meeting to discuss what information about outpatient care delivery across the Division and GTA would be helpful to your site and how the information collected could be shared/presented to make it most useful? What format for this meeting would you prefer?
+
+```{r}
+q18 <-
+  survey_logistics %>%
+  select(site_abbr, survey_18, survey_18_format, survey_18_format_b) %>%
+  filter(!is.na(survey_18)) %>%
+  mutate(contact = recode(survey_18,
+                          "1" = "Yes",
+                          "0" = "No",
+                          "2" = "Maybe") %>%
+           as_factor(),
+         meeting_format = recode(survey_18_format,
+                                 "1" = "Individual",
+                                 "2" = "Group of different stakeholders",
+                                 "3" = "Group of managers only") %>%
+           as_factor(),
+         meeting_where = recode(survey_18_format_b,
+                                "1" = "In person",
+                                "2" = "Virtual") %>%
+           as_factor()) %>%
+  select(site_abbr, contact, meeting_format, meeting_where)
+```
+
+<br>
+
+```{r}
+q18 %>%
+  select(-site_abbr) %>%
+  tbl_summary(
+    label = list(contact ~ "Willing to be contacted?",
+                 meeting_format ~ "Meeting format",
+                 meeting_where ~ "Meeting location")
+  ) %>%
+  modify_header(label = "")
+```
+
+### 19. Do you have any recommendations on which topics to cover or questions you would like to see in future surveys?
+
+```{r}
+q19 <-
+  survey_logistics %>%
+  select(site_abbr, survey_19) %>%
+  filter(!is.na(survey_19))
+
+q19 %>%
+  arrange(site_abbr) %>%
+  gt() %>%
+  cols_label(
+    site_abbr = "Site",
+    survey_19 = "Recommendations") %>%
+  gt_theme_538()
+```
+
+### 20. Do you have any recommendations for how we can improve our survey approach?
+
+No response.
+
+```{r, include=FALSE}
+q20 <-
+  survey_logistics %>%
+  select(site_abbr, survey_20) %>%
+  filter(!is.na(survey_20))
+
+q20
+```
+
+### 21. Open text option for any additional feedback:
+  
+No response.
+  
+```{r, include=FALSE}
+q21 <-
+  survey_logistics %>%
+  select(site_abbr, survey_21) %>%
+  filter(!is.na(survey_21))
+
+q21
+```
