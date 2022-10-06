@@ -41,7 +41,7 @@ library(tidyr)
 
 ```{r}
 df <-
-  read_csv(here("data", "ChildYouthMentalHeal_DATA_2022-07-04_0939.csv"), na = c("", "NA", "N/A", "none", "?")) %>%
+  read_csv(here("data", "ChildYouthMentalHeal_DATA_2022-10-06_1209.csv"), na = c("", "NA", "N/A", "none", "?")) %>%
   select(-redcap_survey_identifier) %>%
   filter(!is.na(survey_01)) %>%
   filter(!record_id %in% c(4, 17, 20)) %>%
@@ -343,7 +343,7 @@ q4_results %>%
 exclude_age <-
   df %>%
   select(site_abbr, survey_04_exclude_young, survey_04_exclude_old) %>%
-  mutate(exclude_age = case_when(!is.na(survey_04_exclude_young) & !is.na(survey_04_exclude_old) ~ glue("> {survey_04_exclude_young} and < {survey_04_exclude_old}"),
+  mutate(exclude_age = case_when(!is.na(survey_04_exclude_young) & !is.na(survey_04_exclude_old) ~ glue("{survey_04_exclude_young} to {survey_04_exclude_old}"),
                                  !is.na(survey_04_exclude_young) ~ glue("> {survey_04_exclude_young}"),
                                  !is.na(survey_04_exclude_old) ~ glue("< {survey_04_exclude_old}"))) %>%
   select(site_abbr, exclude_age) %>%
@@ -484,7 +484,7 @@ q6_results <-
                             "5" = "10-12 months",
                             "6" = "12+ months") %>%
            as_factor() %>%
-           fct_relevel(c("C< 1 month", "1-2 months", "3-6 months", "7-9 months", "10-12 months", "12+ months")))
+           fct_relevel(c("< 1 month", "1-2 months", "3-6 months", "7-9 months", "10-12 months", "12+ months")))
 
 wait_1_sites <-
   q6_results %>%
@@ -539,6 +539,7 @@ q6_results %>%
                           survey_06 == "7-9 months" ~ wait_4_sites,
                           survey_06 == "10-12 months" ~ wait_5_sites,
                           survey_06 == "12+ months" ~ wait_6_sites)) %>%
+  #arrange(survey_06) %>%
   gt() %>%
   gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
   cols_label(
@@ -1325,14 +1326,14 @@ q14 <-
   filter(!is.na(survey_14)) %>%
   mutate(survey_14_recode = recode(survey_14,
                                    "1" = "Yes",
-                                   "2" = "No"))
+                                   "0" = "No"))
 
 q14_responses <- nrow(q14)
 
 q14 %>%
   group_by(survey_14_recode) %>%
   summarize(count = n()) %>%
-  arrange(count) %>%
+  arrange(desc(count)) %>%
   mutate(count_scaled = count/q14_responses * 100) %>%
   gt() %>%
   gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
@@ -1356,14 +1357,15 @@ q15 <-
                                    "1" = "5-10 min",
                                    "2" = "10-15 min",
                                    "3" = "15-20 min",
-                                   "4" = ">20 min"))
+                                   "4" = ">20 min") %>%
+           as_factor() %>%
+           fct_relevel(c("5-10 min", "10-15 min", "15-20 min", ">20 min")))
 
 q15_responses <- nrow(q15)
 
 q15 %>%
   group_by(survey_15_recode) %>%
   summarize(count = n()) %>%
-  arrange(count) %>%
   mutate(count_scaled = count/q15_responses * 100) %>%
   gt() %>%
   gt_plt_bar_pct(column = count_scaled, scaled = TRUE) %>%
